@@ -1,0 +1,133 @@
+---
+title: "The Freedom Zombies"
+author: "Yining Liu, Yuhe Meng, Guanlin Qian, Chengyang Shen"
+date: "2024-01-25"
+output: html_document
+runtime: shiny
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(maps)
+library(ggplot2)
+library(shinythemes)
+library(RColorBrewer)
+library(shiny)
+```
+
+
+```{r, echo=FALSE}
+world_data <- ggplot2::map_data('world')
+world_data <- fortify(world_data)
+combine_data = read.csv("combine.csv")
+combine_data$year <- as.Date(combine_data$year)
+combine_data$year <- as.numeric(format(combine_data$year, "%Y"))
+
+old_names <- c("Antigua", "Barbuda", "Brunei", "Ivory Coast",
+               "Democratic Republic of the Congo", "UK", "Palestine",
+               "Nevis", "Saint Kitts",
+               "Trinidad", "Tobago", "USA", "Vatican", "Grenadines",
+               "Saint Vincent", "Vietnam", "Wallis and Fortuna")
+new_names <- c(rep("Antigua and Barbuda", 2), 
+               "Brunei Darussalam", "Côte d'Ivoire", "Dem. Rep. Congo", 
+               "United Kingdom", "State of Palestine",
+               rep("Saint Kitts and Nevis", 2),
+               rep("Trinidad and Tobago", 2),
+               "United States of America", "Holy See",
+               rep("Saint Vincent and Grenadines", 2), "Viet Nam", "Wallis and Futuna Islands")
+
+for (i in 1:length(old_names)){
+  world_data$region[world_data$region == old_names[i]] <- new_names[i]
+}
+
+gas_abr <- c("o3","no","vo")
+gas_full <- c("Ozone", "Nitrogen Oxide", "VOC")
+
+for (i in 1:length(gas_abr)){
+  combine_data$type[combine_data$type == gas_abr[i]] <- gas_full[i]
+}
+
+world_data["iso"] <- combine_data$iso[match(world_data$region, combine_data$country)]
+
+all_data = merge(world_data,combine_data,by="iso")
+all_data <- all_data[with(all_data, order(group, order)),]
+
+
+worldMaps <- function(data, gas, time){
+  
+  # Function for setting the aesthetics of the plot
+  my_theme <- function () { 
+    theme_bw() + theme(axis.title = element_blank(),
+                       axis.text = element_blank(),
+                       axis.ticks = element_blank(),
+                       panel.grid.major = element_blank(), 
+                       panel.grid.minor = element_blank(),
+                       panel.background = element_blank(), 
+                       legend.position = "bottom",
+                       panel.border = element_blank(), 
+                       strip.background = element_rect(fill = 'white', colour = 'white'))
+  }
+  
+  # Select only the data that the user has selected to view
+  air <- data[data$type == gas & data$year == time,]
+  
+  # Specify the plot for the world map
+  g <- ggplot() + 
+    geom_polygon(data = subset(air, lat >= -60 & lat <= 90), color = 'gray70', linewidth = 0.1,
+                 aes(x = long, y = lat, fill = air_data, group = group)) +
+    scale_fill_gradientn(colours = brewer.pal(6, "Paired"), na.value = 'white') + 
+    my_theme()
+  
+  return(g)
+}
+```
+
+## Interactive Map
+
+```{r, echo=FALSE}
+shinyApp(
+  
+  ui = fluidPage(
+      theme = shinytheme("flatly"),
+      navbarPage(
+        "Pale Blue Dot",
+        tabPanel(
+          "Climate Action",
+          headerPanel("Visualization of three main Greehouse gas data around world between 2003 and 2018"),
+          sidebarLayout(
+            position = "left",
+            sidebarPanel(
+              selectInput(
+                "gas",
+                "Select the type of gas data you want to view:",
+                c(unique(combine_data$type))),
+              sliderInput(
+                "time",
+                "Select the year you want to view:", 
+                min=2003,max=2018,value=2003,animate=TRUE),
+            ),
+            mainPanel(
+              tags$style(type = "text/css",
+                                ".shiny-output-error { visibility: hidden; }",
+                                ".shiny-output-error:before { visibility: hidden; }"),
+              plotOutput("distPlot")),
+          )
+        )
+      )
+  ),
+  
+
+
+# Define server logic required to draw a histogram
+  server = function(input, output) {
+
+  # Create the interactive world map
+  output$distPlot = renderPlot({
+    worldMaps(all_data,input$gas,input$time)
+  })
+
+},
+
+  options = list(height = 1000)
+)
+```
